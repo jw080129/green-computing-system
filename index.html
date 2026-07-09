@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>스마트 환기 제어 시스템</title>
+    <style>
+        body { font-family: 'Malgun Gothic', sans-serif; text-align: center; padding: 50px; background: #f5f5f5; }
+        .card { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); display: inline-block; width: 320px; }
+        .input-group { margin-bottom: 15px; text-align: left; }
+        .input-group label { display: block; margin-bottom: 5px; font-weight: bold; }
+        .input-group input { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; }
+        .btn { width: 100%; padding: 12px; font-size: 16px; margin: 10px 0; cursor: pointer; border-radius: 8px; border: none; font-weight: bold; }
+        .btn-primary { background: #008CBA; color: white; }
+        .btn-open { background: #4CAF50; color: white; }
+        .btn-close { background: #f44336; color: white; }
+        .btn-logout { background: #888; color: white; font-size: 12px; padding: 5px 10px; width: auto; float: right; }
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+
+    <div id="login-section" class="card">
+        <h2>IoT 시스템 로그인</h2>
+        <div class="input-group">
+            <label for="username">아이디</label>
+            <input type="text" id="username" placeholder="ID 입력">
+        </div>
+        <div class="input-group">
+            <label for="password">비밀번호</label>
+            <input type="password" id="password" placeholder="Password 입력">
+        </div>
+        <button class="btn btn-primary" onclick="handleLogin()">로그인</button>
+    </div>
+
+    <div id="control-section" class="card hidden">
+        <button class="btn btn-logout" onclick="handleLogout()">로그아웃</button>
+        <h2 style="clear:both; margin-top:10px;">스마트 환기 대시보드</h2>
+        <p>인증된 관리자 계정으로 접속 중입니다.</p>
+        <hr>
+        <button class="btn btn-primary" onclick="connectBluetooth()">1. 아두이노 블루투스 연결</button>
+        <br><br>
+        <button class="btn btn-open" onclick="sendCommand('O')">창문 열기 (OPEN)</button>
+        <button class="btn btn-close" onclick="sendCommand('C')">창문 닫기 (CLOSE)</button>
+    </div>
+
+    <script>
+        // 고정된 단 하나의 마스터 계정 정보
+        const MASTER_ID = "admin";
+        const MASTER_PW = "1234"; 
+
+        let bluetoothCharacteristic = null;
+
+        // 페이지 로드 시 로그인 상태 확인 (Vercel 새로고침 대응)
+        window.onload = function() {
+            if (sessionStorage.getItem("isLoggedIn") === "true") {
+                showControlSection();
+            }
+        };
+
+        // 로그인 인증 함수
+        function handleLogin() {
+            const idInput = document.getElementById("username").value;
+            const pwInput = document.getElementById("password").value;
+
+            if (idInput === MASTER_ID && pwInput === MASTER_PW) {
+                // 브라우저 탭이 열려있는 동안 유지되는 세션 저장소에 로그인 상태 기록
+                sessionStorage.setItem("isLoggedIn", "true");
+                showControlSection();
+            } else {
+                alert("아이디 또는 비밀번호가 일치하지 않습니다.");
+            }
+        }
+
+        // 로그아웃 함수
+        function handleLogout() {
+            sessionStorage.removeItem("isLoggedIn");
+            if (bluetoothCharacteristic) {
+                // 연결되어 있다면 블루투스 연결 해제 유도
+                bluetoothCharacteristic.service.device.gatt.disconnect();
+            }
+            location.reload(); // 페이지 새로고침으로 초기화
+        }
+
+        // 화면 전환 함수
+        function showControlSection() {
+            document.getElementById("login-section").classList.add("hidden");
+            document.getElementById("control-section").classList.remove("hidden");
+        }
+
+        // Web Bluetooth API 연결 함수
+        async function connectBluetooth() {
+            try {
+                const device = await navigator.bluetooth.requestDevice({
+                    optionalServices: ['00001101-0000-1000-8000-00805f9b34fb'],
+                    acceptAllDevices: true
+                });
+                
+                const server = await device.gatt.connect();
+                const service = await server.getPrimaryService('00001101-0000-1000-8000-00805f9b34fb');
+                const characteristics = await service.getCharacteristics();
+                bluetoothCharacteristic = characteristics[0];
+                
+                alert("아두이노 연결 성공!");
+            } catch (error) {
+                console.error(error);
+                alert("연결 실패: " + error.message);
+            }
+        }
+
+        // 아두이노 명령 전송 함수
+        async function sendCommand(charCmd) {
+            // 철저한 보안을 위해 버튼을 누를 때마다 로그인 세션을 한 번 더 검증 (우회 방지)
+            if (sessionStorage.getItem("isLoggedIn") !== "true") {
+                alert("비정상적인 접근입니다.");
+                location.reload();
+                return;
+            }
+
+            if (!bluetoothCharacteristic) {
+                alert("먼저 블루투스를 연결해주세요.");
+                return;
+            }
+            const encoder = new TextEncoder();
+            const data = encoder.encode(charCmd);
+            await bluetoothCharacteristic.writeValue(data);
+            console.log(`명령 전송: ${charCmd}`);
+        }
+    </script>
+</body>
+</html>
