@@ -3,129 +3,191 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>스마트 환기 제어 시스템</title>
+    <title>Green IDC 전력 최적화 시스템</title>
     <style>
-        body { font-family: 'Malgun Gothic', sans-serif; text-align: center; padding: 50px; background: #f5f5f5; }
-        .card { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); display: inline-block; width: 320px; }
-        .input-group { margin-bottom: 15px; text-align: left; }
-        .input-group label { display: block; margin-bottom: 5px; font-weight: bold; }
-        .input-group input { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; }
-        .btn { width: 100%; padding: 12px; font-size: 16px; margin: 10px 0; cursor: pointer; border-radius: 8px; border: none; font-weight: bold; }
-        .btn-primary { background: #008CBA; color: white; }
-        .btn-open { background: #4CAF50; color: white; }
-        .btn-close { background: #f44336; color: white; }
-        .btn-logout { background: #888; color: white; font-size: 12px; padding: 5px 10px; width: auto; float: right; }
-        .hidden { display: none; }
+        :root {
+            --primary-color: #2ecc71;
+            --background-color: #f5f6fa;
+            --card-color: #ffffff;
+            --text-color: #2c3e50;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--background-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        .container {
+            background-color: var(--card-color);
+            padding: 30px;
+            border-radius: 16px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.05);
+            width: 100%;
+            max-width: 480px;
+            text-align: center;
+        }
+        h1 {
+            font-size: 24px;
+            margin-bottom: 5px;
+            color: #1abc9c;
+        }
+        .subtitle {
+            font-size: 14px;
+            color: #7f8c8d;
+            margin-bottom: 30px;
+        }
+        .btn {
+            width: 100%;
+            padding: 15px;
+            font-size: 16px;
+            font-weight: bold;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background 0.2s;
+            margin-bottom: 25px;
+        }
+        .btn-connect {
+            background-color: #3498db;
+            color: white;
+        }
+        .btn-connect:hover { background-color: #2980b9; }
+        .btn-connect.connected {
+            background-color: var(--primary-color);
+        }
+        .slider-section {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            border: 1px solid #e9ecef;
+        }
+        .slider-label {
+            display: flex;
+            justify-content: space-between;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        .slider {
+            width: 100%;
+            -webkit-appearance: none;
+            height: 8px;
+            border-radius: 5px;
+            background: #ddd;
+            outline: none;
+        }
+        .slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #1abc9c;
+            cursor: pointer;
+        }
+        .status-box {
+            font-size: 13px;
+            color: #95a5a6;
+            border-top: 1px solid #eee;
+            padding-top: 15px;
+            margin-top: 20px;
+        }
     </style>
 </head>
 <body>
 
-    <div id="login-section" class="card">
-        <h2>IoT 시스템 로그인</h2>
-        <div class="input-group">
-            <label for="username">아이디</label>
-            <input type="text" id="username" placeholder="ID 입력">
+<div class="container">
+    <h1>그린 데이터 센터 (Green IDC)</h1>
+    <div class="subtitle">전력 최적화 시뮬레이터 대시보드</div>
+
+    <button id="connectBtn" class="btn btn-connect">1. 아두이노 블루투스 연결</button>
+
+    <div class="slider-section">
+        <div class="slider-label">
+            <span>시뮬레이션 트래픽 부하</span>
+            <span id="trafficValue">0%</span>
         </div>
-        <div class="input-group">
-            <label for="password">비밀번호</label>
-            <input type="password" id="password" placeholder="Password 입력">
-        </div>
-        <button class="btn btn-primary" onclick="handleLogin()">로그인</button>
+        <input type="range" id="trafficSlider" class="slider" min="0" max="100" value="0" disabled>
     </div>
 
-    <div id="control-section" class="card hidden">
-        <button class="btn btn-logout" onclick="handleLogout()">로그아웃</button>
-        <h2 style="clear:both; margin-top:10px;">스마트 환기 대시보드</h2>
-        <p>인증된 관리자 계정으로 접속 중입니다.</p>
-        <hr>
-        <button class="btn btn-primary" onclick="connectBluetooth()">1. 아두이노 블루투스 연결</button>
-        <br><br>
-        <button class="btn btn-open" onclick="sendCommand('O')">창문 열기 (OPEN)</button>
-        <button class="btn btn-close" onclick="sendCommand('C')">창문 닫기 (CLOSE)</button>
+    <div class="status-box" id="statusText">
+        상태: 블루투스 연결이 필요합니다.
     </div>
+</div>
 
-    <script>
-        // 고정된 단 하나의 마스터 계정 정보
-        const MASTER_ID = "admin";
-        const MASTER_PW = "1234"; 
+<script>
+    // Web Bluetooth API 통신 설정을 위한 전역 변수
+    let bluetoothDevice = null;
+    let rxCharacteristic = null; // 아두이노로 데이터를 보낼 통로
 
-        let bluetoothCharacteristic = null;
+    // UUID 설정 (JY-MCU/HC-06 규격 표준 UUID)
+    const UUID_SERVICE = "00001101-0000-1000-8000-00805f9b34fb"; 
 
-        // 페이지 로드 시 로그인 상태 확인 (Vercel 새로고침 대응)
-        window.onload = function() {
-            if (sessionStorage.getItem("isLoggedIn") === "true") {
-                showControlSection();
-            }
-        };
+    const connectBtn = document.getElementById('connectBtn');
+    const trafficSlider = document.getElementById('trafficSlider');
+    const trafficValue = document.getElementById('trafficValue');
+    const statusText = document.getElementById('statusText');
 
-        // 로그인 인증 함수
-        function handleLogin() {
-            const idInput = document.getElementById("username").value;
-            const pwInput = document.getElementById("password").value;
-
-            if (idInput === MASTER_ID && pwInput === MASTER_PW) {
-                // 브라우저 탭이 열려있는 동안 유지되는 세션 저장소에 로그인 상태 기록
-                sessionStorage.setItem("isLoggedIn", "true");
-                showControlSection();
-            } else {
-                alert("아이디 또는 비밀번호가 일치하지 않습니다.");
-            }
+    // 블루투스 연결 함수
+    connectBtn.addEventListener('click', async () => {
+        if (bluetoothDevice && bluetoothDevice.gatt.connected) {
+            statusText.innerText = "상태: 이미 연결되어 있습니다.";
+            return;
         }
 
-        // 로그아웃 함수
-        function handleLogout() {
-            sessionStorage.removeItem("isLoggedIn");
-            if (bluetoothCharacteristic) {
-                // 연결되어 있다면 블루투스 연결 해제 유도
-                bluetoothCharacteristic.service.device.gatt.disconnect();
-            }
-            location.reload(); // 페이지 새로고침으로 초기화
-        }
+        try {
+            statusText.innerText = "상태: 아두이노 탐색 중...";
+            
+            // 클래식 블루투스(Serial Port Profile) 기반 HC-06 탐색 및 필터링
+            bluetoothDevice = await navigator.bluetooth.requestDevice({
+                filters: [{ namePrefix: 'HC' }, { namePrefix: 'linvor' }, { namePrefix: 'BT' }],
+                optionalServices: [UUID_SERVICE]
+            });
 
-        // 화면 전환 함수
-        function showControlSection() {
-            document.getElementById("login-section").classList.add("hidden");
-            document.getElementById("control-section").classList.remove("hidden");
-        }
+            statusText.innerText = "상태: 서버 연결 중...";
+            const server = await bluetoothDevice.gatt.connect();
 
-        // Web Bluetooth API 연결 함수
-        async function connectBluetooth() {
+            statusText.innerText = "상태: 서비스 프로파일 로드 중...";
+            const service = await server.getPrimaryService(UUID_SERVICE);
+            
+            // 가상의 통신 캐릭터리스틱 획득 (아두이노 RX 핀으로 쏠 통로)
+            const characteristics = await service.getCharacteristics();
+            rxCharacteristic = characteristics[0]; 
+
+            // 연결 성공 시 UI 업데이트
+            statusText.innerText = "상태: 아두이노 연결 성공! 실시간 제어 가능";
+            connectBtn.innerText = "✔ 연결 완료";
+            connectBtn.classList.add('connected');
+            trafficSlider.disabled = false; // 슬라이더 잠금 해제
+
+        } catch (error) {
+            console.error(error);
+            statusText.innerText = "오류: 연결 실패 (" + error.message + ")";
+        }
+    });
+
+    // 슬라이더 값이 바뀔 때마다 아두이노로 데이터를 전송하는 이벤트
+    trafficSlider.addEventListener('input', async (e) => {
+        const value = e.target.value;
+        trafficValue.innerText = value + "%";
+
+        if (rxCharacteristic) {
             try {
-                const device = await navigator.bluetooth.requestDevice({
-                    optionalServices: ['00001101-0000-1000-8000-00805f9b34fb'],
-                    acceptAllDevices: true
-                });
-                
-                const server = await device.gatt.connect();
-                const service = await server.getPrimaryService('00001101-0000-1000-8000-00805f9b34fb');
-                const characteristics = await service.getCharacteristics();
-                bluetoothCharacteristic = characteristics[0];
-                
-                alert("아두이노 연결 성공!");
+                // 문자열 데이터를 바이트 배열로 변환하여 아두이노 Serial로 전송 (끝에 개행문자 포함)
+                const encoder = new TextEncoder();
+                const data = encoder.encode(value + "\n");
+                await rxCharacteristic.writeValue(data);
             } catch (error) {
-                console.error(error);
-                alert("연결 실패: " + error.message);
+                console.error("데이터 전송 실패:", error);
+                statusText.innerText = "상태: 데이터 전송 오류 발생";
             }
         }
+    });
+</script>
 
-        // 아두이노 명령 전송 함수
-        async function sendCommand(charCmd) {
-            // 철저한 보안을 위해 버튼을 누를 때마다 로그인 세션을 한 번 더 검증 (우회 방지)
-            if (sessionStorage.getItem("isLoggedIn") !== "true") {
-                alert("비정상적인 접근입니다.");
-                location.reload();
-                return;
-            }
-
-            if (!bluetoothCharacteristic) {
-                alert("먼저 블루투스를 연결해주세요.");
-                return;
-            }
-            const encoder = new TextEncoder();
-            const data = encoder.encode(charCmd);
-            await bluetoothCharacteristic.writeValue(data);
-            console.log(`명령 전송: ${charCmd}`);
-        }
-    </script>
 </body>
 </html>
