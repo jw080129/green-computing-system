@@ -28,7 +28,7 @@
             border-radius: 16px;
             box-shadow: 0 10px 30px rgba(0,0,0,0.05);
             width: 100%;
-            max-width: 480px;
+            max-width: 560px; /* 비디오 비율(16:9)을 위해 가로폭을 넓혔습니다 */
             text-align: center;
         }
         h1 {
@@ -60,35 +60,43 @@
         .btn-connect.connected {
             background-color: var(--primary-color);
         }
-        .slider-section {
+        
+        /* 유튜브 플레이어 구역 스타일 */
+        .video-section {
             background: #f8f9fa;
-            padding: 20px;
+            padding: 15px;
             border-radius: 12px;
             margin-bottom: 20px;
             border: 1px solid #e9ecef;
         }
-        .slider-label {
+        .video-container {
+            position: relative;
+            width: 100%;
+            padding-bottom: 56.25%; /* 16:9 비율 유지 */
+            height: 0;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+        }
+        .video-container iframe {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+        .traffic-display {
             display: flex;
             justify-content: space-between;
             font-weight: bold;
-            margin-bottom: 10px;
+            margin-top: 15px;
+            font-size: 16px;
+            color: #34495e;
         }
-        .slider {
-            width: 100%;
-            -webkit-appearance: none;
-            height: 8px;
-            border-radius: 5px;
-            background: #ddd;
-            outline: none;
+        #trafficValue {
+            color: #e74c3c;
         }
-        .slider::-webkit-slider-thumb {
-            -webkit-appearance: none;
-            width: 20px;
-            height: 20px;
-            border-radius: 50%;
-            background: #1abc9c;
-            cursor: pointer;
-        }
+
         .status-box {
             font-size: 13px;
             color: #95a5a6;
@@ -102,16 +110,19 @@
 
 <div class="container">
     <h1>그린 데이터 센터 (Green IDC)</h1>
-    <div class="subtitle">전력 최적화 시뮬레이터 대시보드</div>
+    <div class="subtitle">실사용자 스트리밍 연동 대시보드</div>
 
     <button id="connectBtn" class="btn btn-connect">1. 아두이노 블루투스 연결</button>
 
-    <div class="slider-section">
-        <div class="slider-label">
-            <span>시뮬레이션 트래픽 부하</span>
+    <div class="video-section">
+        <div class="video-container">
+            <div id="player"></div>
+        </div>
+        
+        <div class="traffic-display">
+            <span>실시간 스트리밍 부하(TRF)</span>
             <span id="trafficValue">0%</span>
         </div>
-        <input type="range" id="trafficSlider" class="slider" min="0" max="100" value="0" disabled>
     </div>
 
     <div class="status-box" id="statusText">
@@ -122,15 +133,81 @@
 <script>
     let bluetoothDevice = null;
     let rxCharacteristic = null;
-    let isSending = false; // 전송 락(Lock) 변수 추가
+    let player = null;
 
     const UUID_SERVICE = "0000ffe0-0000-1000-8000-00805f9b34fb";
     
     const connectBtn = document.getElementById('connectBtn');
-    const trafficSlider = document.getElementById('trafficSlider');
     const trafficValue = document.getElementById('trafficValue');
     const statusText = document.getElementById('statusText');
 
+    // 1. YouTube IFrame Player API 비동기 로드
+    const tag = document.createElement('script');
+    tag.src = "https://www.youtube.com/iframe_api";
+    const firstScriptTag = document.getElementsByTagName('script')[0];
+    firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+
+    // 2. API 로드가 완료되면 플레이어 생성
+    function onYouTubeIframeAPIReady() {
+        player = new YT.Player('player', {
+            height: '100%',
+            width: '100%',
+            videoId: 'dQw4w9WgXcQ', // 테스트용 영상 ID (원하는 유튜브 영상 ID로 교체 가능)
+            playerVars: {
+                'playsinline': 1,
+                'rel': 0
+            },
+            events: {
+                'onStateChange': onPlayerStateChange
+            }
+        });
+    }
+
+    // 3. 영상 상태 변화 감지 및 아두이노 데이터 전송
+    function onPlayerStateChange(event) {
+        let traffic = 0;
+
+        switch (event.data) {
+            case YT.PlayerState.PLAYING: // 재생 중일 때
+                traffic = 65; // 대역폭 사용을 모사한 트래픽 설정 (65%)
+                statusText.innerText = "상태: 동영상 재생 중 - 데이터센터 부하 발생";
+                break;
+            case YT.PlayerState.PAUSED:  // 일시정지 상태일 때
+            case YT.PlayerState.ENDED:   // 종료 상태일 때
+                traffic = 0;  // 유휴(Idle) 상태로 전환 (0%)
+                statusText.innerText = "상태: 동영상 정지 - 서버 대기 전력 모드 전환";
+                break;
+            case YT.PlayerState.BUFFERING: // 버퍼링(화질 변경, 탐색 등) 발생 시
+                traffic = 95; // 데이터 순간 폭증 모사 (95%)
+                statusText.innerText = "상태: 스트리밍 버퍼링 - 전력 피크 발생 예고";
+                break;
+            default:
+                return;
+        }
+
+        // 화면에 트래픽 표시 업데이트
+        trafficValue.innerText = traffic + "%";
+
+        // 아두이노로 트래픽 값 즉시 송신
+        sendBluetoothData(traffic);
+    }
+
+    // 4. 블루투스 데이터 송신 공통 함수
+    async function sendBluetoothData(value) {
+        if (rxCharacteristic) {
+            try {
+                const encoder = new TextEncoder();
+                const data = encoder.encode(value + "\n");
+                await rxCharacteristic.writeValue(data);
+                console.log("전송 성공 트래픽:", value);
+            } catch (error) {
+                console.error("데이터 전송 실패:", error);
+                statusText.innerText = "상태: 데이터 전송 오류 발생";
+            }
+        }
+    }
+
+    // 5. 웹 블루투스 연결 로직 (기존 유지)
     connectBtn.addEventListener('click', async () => {
         if (bluetoothDevice && bluetoothDevice.gatt.connected) {
             statusText.innerText = "상태: 이미 연결되어 있습니다.";
@@ -164,51 +241,13 @@
                 throw new Error("쓰기 가능한 통신 통로를 찾을 수 없습니다.");
             }
     
-            statusText.innerText = "상태: 아두이노 연결 성공! 실시간 제어 가능";
+            statusText.innerText = "상태: 아두이노 연결 성공! 영상을 재생해 보세요.";
             connectBtn.innerText = "✔ 연결 완료";
             connectBtn.classList.add('connected');
-            trafficSlider.disabled = false;
     
         } catch (error) {
             console.error(error);
             statusText.innerText = "오류: 연결 실패 (" + error.message + ")";
-        }
-    });
-
-    // 전송 안정성을 개선한 데이터 송신 로직
-    trafficSlider.addEventListener('input', async (e) => {
-        const value = e.target.value;
-        trafficValue.innerText = value + "%"; // 웹 UI 숫자는 즉시 변경
-
-        // 이전 전송 연산이 처리 중이면 다음 전송을 스킵하여 보드 과부하 방지
-        if (isSending) return; 
-
-        if (rxCharacteristic) {
-            try {
-                isSending = true;
-                const encoder = new TextEncoder();
-                const data = encoder.encode(value + "\n");
-                await rxCharacteristic.writeValue(data);
-            } catch (error) {
-                console.error("데이터 전송 실패:", error);
-                statusText.innerText = "상태: 데이터 전송 오류 발생";
-            } finally {
-                isSending = false; // 전송이 완료되면 다시 잠금 해제
-            }
-        }
-    });
-
-    // 드래그를 놓은 '최종 값'은 무조건 한 번 더 확실하게 전송 (보정용)
-    trafficSlider.addEventListener('change', async (e) => {
-        const value = e.target.value;
-        if (rxCharacteristic) {
-            try {
-                const encoder = new TextEncoder();
-                const data = encoder.encode(value + "\n");
-                await rxCharacteristic.writeValue(data);
-            } catch (error) {
-                console.error("최종 데이터 전송 실패:", error);
-            }
         }
     });
 </script>
