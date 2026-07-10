@@ -50,7 +50,7 @@
             border-radius: 8px;
             cursor: pointer;
             transition: background 0.2s;
-            margin-bottom: 25px;
+            margin-bottom: 15px;
         }
         .btn-connect {
             background-color: #3498db;
@@ -59,6 +59,18 @@
         .btn-connect:hover { background-color: #2980b9; }
         .btn-connect.connected {
             background-color: var(--primary-color);
+        }
+
+        /* 다운로드 버튼 스타일 */
+        .btn-download {
+            background-color: #e67e22;
+            color: white;
+            margin-top: 10px;
+        }
+        .btn-download:hover { background-color: #d35400; }
+        .btn-download:disabled {
+            background-color: #bdc3c7;
+            cursor: not-allowed;
         }
         
         .video-section {
@@ -93,7 +105,8 @@
             color: #34495e;
         }
         #trafficValue {
-            color: #e74c3c;
+            color: #2ecc71;
+            font-size: 20px;
             transition: color 0.2s;
         }
 
@@ -110,7 +123,7 @@
 
 <div class="container">
     <h1>그린 데이터 센터 (Green IDC)</h1>
-    <div class="subtitle">네트워크 패킷 기반 실시간 트래픽 대시보드</div>
+    <div class="subtitle">멀티 시나리오 기반 실시간 트래픽 대시보드</div>
 
     <button id="connectBtn" class="btn btn-connect">1. 아두이노 블루투스 연결</button>
 
@@ -119,8 +132,10 @@
             <div id="player"></div>
         </div>
         
+        <button id="downloadBtn" class="btn btn-download" disabled>시나리오 2: 대용량 파일(100MB) 다운로드</button>
+
         <div class="traffic-display">
-            <span>실제 스트리밍 패킷 부하 (Real TRF)</span>
+            <span>실제 시스템 네트워크 부하 (Real TRF)</span>
             <span id="trafficValue">0%</span>
         </div>
     </div>
@@ -135,13 +150,14 @@
     let rxCharacteristic = null;
     let player = null;
     
-    // 네트워크 측정을 위한 변수들
     let totalBytesInWindow = 0;
-    const MAX_EXPECTED_SPEED = 3 * 1024 * 1024; // 최대 예상 대역폭 (초당 3MB 기준 부하 100% 매핑)
+    // 최대 예상 대역폭 (다운로드 시 초당 최대 10MB 대역을 100% 부하로 매핑하도록 조정)
+    const MAX_EXPECTED_SPEED = 10 * 1024 * 1024; 
 
     const UUID_SERVICE = "0000ffe0-0000-1000-8000-00805f9b34fb";
     
     const connectBtn = document.getElementById('connectBtn');
+    const downloadBtn = document.getElementById('downloadBtn');
     const trafficValue = document.getElementById('trafficValue');
     const statusText = document.getElementById('statusText');
 
@@ -155,20 +171,17 @@
         player = new YT.Player('player', {
             height: '100%',
             width: '100%',
-            videoId: 'dQw4w9WgXcQ', // 테스트용 영상 (원하는 영상 ID로 변경 가능)
-            playerVars: {
-                'playsinline': 1,
-                'rel': 0
-            }
+            videoId: 'dQw4w9WgXcQ',
+            playerVars: { 'playsinline': 1, 'rel': 0 }
         });
     }
 
-    // 2. 핵심: 브라우저 백그라운드 실제 네트워크 패킷 트래픽 캡처 (PerformanceObserver)
+    // 2. 브라우저 네트워크 패킷 측정 (유튜브 조각 + 가상 다운로드 블롭 파일 모두 감지)
     if (window.PerformanceObserver) {
         const observer = new PerformanceObserver((list) => {
             list.getEntries().forEach((entry) => {
-                // 유튜브 비디오 스트리밍 도메인(googlevideo)으로부터 들어오는 패킷만 필터링 및 바이트 합산
-                if (entry.name.includes('googlevideo.com') && entry.transferSize) {
+                // 유튜브 비디오 패킷 혹은 가상 다운로드(blob/fetch) 통신 바이트 누적
+                if ((entry.name.includes('googlevideo.com') || entry.name.includes('blob') || entry.entryType === 'resource') && entry.transferSize) {
                     totalBytesInWindow += entry.transferSize;
                 }
             });
@@ -176,46 +189,70 @@
         observer.observe({ type: 'resource', buffered: true });
     }
 
-    // 3. 0.5초마다 축적된 패킷 용량을 계산하여 아두이노로 실시간 전송 (Interval 제어)
-    setInterval(() => {
-        // 0.5초 동안 다운로드된 바이트를 초당 전송률(Bps)로 변환
-        let currentSpeed = totalBytesInWindow * 2; 
-        totalBytesInWindow = 0; // 변수 초기화
+    // 3. 가상 100MB 파일 생성 및 실제 다운로드 유도 로직 (Blob API)
+    downloadBtn.addEventListener('click', () => {
+        statusText.innerText = "상태: 데이터센터 대용량 파일 전송 중 (버스트 트래픽 발생)";
+        
+        // 메인 메모리에 가상으로 100MB(102,400,000 바이트) 크기의 더미 데이터 배열 생성
+        const buffer = new ArrayBuffer(100 * 1024 * 1024); 
+        const view = new Uint8Array(buffer);
+        for(let i=0; i<view.length; i++) { view[i] = i % 256; } // 더미 데이터 채우기
+        
+        const blob = new Blob([buffer], { type: "application/octet-stream" });
+        const blobUrl = URL.createObjectURL(blob);
+        
+        // 성능 측정 센서에 수동으로 다운로드 바이트 강제 주입하여 부하 연동
+        totalBytesInWindow += 100 * 1024 * 1024;
 
-        // 실제 수치를 데이터센터 부하 비율(0% ~ 100%)로 수학적 매핑
+        // 실제 브라우저 파일 다운로드 동작 유도
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.download = "IDC_Dummy_100MB.dat";
+        document.body.appendChild(a);
+        a.click();
+        
+        // 다운로드 직후 메모리 해제 및 링크 삭제
+        setTimeout(() => {
+            URL.revokeObjectURL(blobUrl);
+            a.remove();
+        }, 100);
+    });
+
+    // 4. 0.5초마다 축적된 패킷 용량을 계산하여 아두이노로 실시간 전송
+    setInterval(() => {
+        let currentSpeed = totalBytesInWindow * 2; 
+        totalBytesInWindow = 0; 
+
         let trafficPercentage = Math.min(Math.round((currentSpeed / MAX_EXPECTED_SPEED) * 100), 100);
         
-        // 미세하게 데이터가 유입될 때 최소 가동 라인 보정 (예: 재생 중 뚝 떨어짐 방지)
+        // 유튜브 재생 중 기본 유지 부하 보정
         if (player && player.getPlayerState() === YT.PlayerState.PLAYING && trafficPercentage === 0) {
-            trafficPercentage = Math.floor(Math.random() * 5) + 12; // 재생 중 기본 유지 부하 (12%~16%)
+            trafficPercentage = Math.floor(Math.random() * 5) + 12; 
         }
 
-        // 화면 표기 업데이트
         trafficValue.innerText = trafficPercentage + "%";
         
-        // 전력 부하 수치에 따른 색상 시각화 효과
         if(trafficPercentage > 70) trafficValue.style.color = '#e74c3c';
         else if(trafficPercentage > 30) trafficValue.style.color = '#f39c12';
         else trafficValue.style.color = '#2ecc71';
 
-        // 블루투스를 통해 아두이노 하드웨어로 실제 부하 전송
         if (rxCharacteristic) {
             sendBluetoothData(trafficPercentage);
         }
     }, 500);
 
-    // 4. 블루투스 데이터 송신 함수
+    // 5. 블루투스 데이터 송신 함수
     async function sendBluetoothData(value) {
         try {
             const encoder = new TextEncoder();
             const data = encoder.encode(value + "\n");
-            await rxCharacteristic.writeValueWithoutResponse(data); // 속도 향상을 위해 변경
+            await rxCharacteristic.writeValueWithoutResponse(data);
         } catch (error) {
             console.error("데이터 전송 실패:", error);
         }
     }
 
-    // 5. 웹 블루투스 연결 로직
+    // 6. 웹 블루투스 연결 로직
     connectBtn.addEventListener('click', async () => {
         if (bluetoothDevice && bluetoothDevice.gatt.connected) return;
         try {
@@ -234,9 +271,10 @@
                     break;
                 }
             }
-            statusText.innerText = "상태: 연결 성공! 실제 패킷 캡처 대기 중.";
+            statusText.innerText = "상태: 연결 성공! 기능들이 활성화되었습니다.";
             connectBtn.innerText = "✔ 연결 완료";
             connectBtn.classList.add('connected');
+            downloadBtn.disabled = false; // 블루투스 연결 시 다운로드 버튼 활성화
         } catch (error) {
             statusText.innerText = "오류: 연결 실패 (" + error.message + ")";
         }
