@@ -69,7 +69,6 @@
     let player = null;
     let isFiltering = false;
 
-    // 유튜브 API
     const tag = document.createElement('script');
     tag.src = "https://www.youtube.com/iframe_api";
     document.getElementsByTagName('script')[0].parentNode.insertBefore(tag, document.getElementsByTagName('script')[0]);
@@ -78,36 +77,38 @@
         player = new YT.Player('player', { height: '100%', width: '100%', videoId: 'dQw4w9WgXcQ', playerVars: { 'playsinline': 1 } });
     }
 
-    // 필터링 버튼 동작
     document.getElementById('filterBtn').addEventListener('click', () => {
         isFiltering = true;
         document.querySelector('iframe').style.filter = 'blur(10px) grayscale(100%)';
-        statusText.innerText = "연산 중: 실시간 고해상도 이미지 필터링 알고리즘 가동 중...";
+        document.getElementById('statusText').innerText = "연산 중: 실시간 고해상도 이미지 필터링 알고리즘 가동 중...";
         setTimeout(() => {
             isFiltering = false;
             document.querySelector('iframe').style.filter = 'none';
-            statusText.innerText = "상태: 필터링 종료. 자원 안정화.";
+            document.getElementById('statusText').innerText = "상태: 필터링 종료. 자원 안정화.";
         }, 5000);
     });
 
-    // 메인 루프 (상태 동기화)
     setInterval(() => {
-        let baseLoad = (player && player.getPlayerState() === 1) ? 20 + Math.random() * 10 : 0;
+        let baseLoad = (player && player.getPlayerState() === 1) ? 20 + Math.round(Math.random() * 10) : 0;
         let totalLoad = isFiltering ? 100 : baseLoad;
         
-        // 그린 컴퓨팅 적용 로직
-        let finalLoad = document.getElementById('greenSwitch').checked ? Math.round(totalLoad * 0.45 + Math.random() * 5) : totalLoad;
+        let greenOn = document.getElementById('greenSwitch').checked;
+        let finalLoad = greenOn ? Math.round(totalLoad * 0.45 + Math.random() * 5) : totalLoad;
 
+        // 정수 처리 및 시각적 피드백 적용
         document.getElementById('trafficDisplay').innerText = Math.round(totalLoad) + "%";
-        document.getElementById('loadDisplay').innerText = finalLoad + "%";
+        let loadEl = document.getElementById('loadDisplay');
+        loadEl.innerText = Math.round(finalLoad) + "%";
+        
+        // 그린 컴퓨팅 활성화 시 색상 변경[cite: 1]
+        loadEl.style.color = greenOn ? 'var(--primary-color)' : '#3498db';
 
         if (rxCharacteristic) {
             const encoder = new TextEncoder();
-            rxCharacteristic.writeValueWithoutResponse(encoder.encode(finalLoad + "\n"));
+            rxCharacteristic.writeValueWithoutResponse(encoder.encode(Math.round(finalLoad) + "\n"));
         }
     }, 500);
 
-    // 블루투스 연결 (기존 로직 유지)
     document.getElementById('connectBtn').addEventListener('click', async () => {
         try {
             const device = await navigator.bluetooth.requestDevice({ filters: [{ namePrefix: 'HC' }], optionalServices: ["0000ffe0-0000-1000-8000-00805f9b34fb"] });
@@ -116,7 +117,7 @@
             rxCharacteristic = await service.getCharacteristics().then(c => c[0]);
             document.getElementById('connectBtn').innerText = "✔ 연동 완료";
             document.getElementById('connectBtn').classList.add('connected');
-        } catch (e) { statusText.innerText = "오류: 연결 실패"; }
+        } catch (e) { document.getElementById('statusText').innerText = "오류: 연결 실패"; }
     });
 </script>
 
