@@ -83,7 +83,7 @@
 
 <div class="container">
     <h1>미니 그린 컴퓨팅 시스템 (Green IDC)</h1>
-    <div class="subtitle">실제 패킷 및 워크로드 연동 전력 최적화 대시보</div>
+    <div class="subtitle">실제 패킷 및 워크로드 연동 전력 최적화 대시보드</div>
 
     <button id="connectBtn" class="btn btn-connect">1. 아두이노 그린 컴퓨팅 시스템 연결</button>
 
@@ -102,12 +102,13 @@
             <span id="loadDisplay" class="val-box" style="color: #3498db;">0%</span>
         </div>
 
-        <!-- 실제 하드웨어 연산 부하를 유발하는 버튼 -->
         <button id="computeBtn" class="btn btn-compute" style="margin-top: 10px; margin-bottom: 5px;">2. 빅데이터 정렬 알고리즘 가동 (CPU 부하 추가)</button>
 
-        <!-- 그린 컴퓨팅 토글 스위치 -->
         <div class="switch-container">
-            <span style="color: #27ae60; font-weight: bold; font-size: 15px;">🟢 그린 컴퓨팅 (지능형 전력 최적화)</span>
+            <label style="display: flex; align-items: center; gap: 8px; color: #27ae60; font-weight: bold; font-size: 15px;">
+                <span id="greenDot" style="display: inline-block; width: 10px; height: 10px; background-color: #ccc; border-radius: 50%;"></span>
+                그린 컴퓨팅 (지능형 전력 최적화)
+            </label>
             <label class="switch">
                 <input type="checkbox" id="greenSwitch">
                 <span class="slider"></span>
@@ -125,21 +126,20 @@
     let rxCharacteristic = null;
     let player = null;
 
-    // 실시간 자원 측정 변수
     let totalBytesInWindow = 0;
-    let cpuLoadWeight = 0; // 알고리즘 작동 시 추가되는 CPU 부하 가중치
-    const MAX_NET_SPEED = 3 * 1024 * 1024; // 초당 3MB 네트워크 속도를 기준으로 잡음
+    let cpuLoadWeight = 0; 
+    const MAX_NET_SPEED = 3 * 1024 * 1024; 
 
     const UUID_SERVICE = "0000ffe0-0000-1000-8000-00805f9b34fb";
     
     const connectBtn = document.getElementById('connectBtn');
     const computeBtn = document.getElementById('computeBtn');
     const greenSwitch = document.getElementById('greenSwitch');
+    const greenDot = document.getElementById('greenDot');
     const trafficDisplay = document.getElementById('trafficDisplay');
     const loadDisplay = document.getElementById('loadDisplay');
     const statusText = document.getElementById('statusText');
 
-    // 1. YouTube API 로드
     const tag = document.createElement('script');
     tag.src = "https://www.youtube.com/iframe_api";
     document.getElementsByTagName('script')[0].parentNode.insertBefore(tag, document.getElementsByTagName('script')[0]);
@@ -151,81 +151,74 @@
         });
     }
 
-    // 2. 핵심: 브라우저 백그라운드 진짜 네트워크 패킷 실시간 측정 (유튜브 스트리밍 데이터 감지)
     if (window.PerformanceObserver) {
         const observer = new PerformanceObserver((list) => {
             list.getEntries().forEach((entry) => {
                 if (entry.name.includes('googlevideo.com') && entry.transferSize) {
-                    totalBytesInWindow += entry.transferSize; // 실제 유입 바이트 누적
+                    totalBytesInWindow += entry.transferSize; 
                 }
             });
         });
         observer.observe({ type: 'resource', buffered: true });
     }
 
-    // 3. 실제 CPU 연산 부하 유발 활동 (정렬 알고리즘)
     computeBtn.addEventListener('click', () => {
-        cpuLoadWeight = 75; // 정렬 버튼 클릭 시 기본 부하 가중치를 75% 확 끌어올림
+        cpuLoadWeight = 75; 
         statusText.innerText = "연산 중: 대규모 빅데이터 정렬 처리 중... (CPU 최대 자원 소모)";
         
         let executionCount = 0;
         const heavyTaskInterval = setInterval(() => {
-            // 진짜 브라우저 연산 장치를 바쁘게 만드는 정렬 루프 실행
             let dummyArray = [];
             for(let i = 0; i < 70000; i++) { dummyArray.push(Math.random()); }
             dummyArray.sort();
 
             executionCount++;
-            if(executionCount >= 10) { // 약 5초 후 연산 종료
+            if(executionCount >= 10) { 
                 clearInterval(heavyTaskInterval);
-                cpuLoadWeight = 0; // 가중치 해제
+                cpuLoadWeight = 0; 
                 statusText.innerText = "상태: 데이터 연산 완료. 시스템 자원이 안정화되었습니다.";
             }
         }, 500);
     });
 
-    // 4. 0.5초마다 [실제 네트워크 패킷 부하 + CPU 연산 부하]를 종합 연산하는 메인 루프
     setInterval(() => {
-        // 0.5초 동안 다운로드된 실제 바이트를 초당 전송률(Bps)로 환산
         let currentNetSpeed = totalBytesInWindow * 2; 
-        totalBytesInWindow = 0; // 버퍼 초기화
+        totalBytesInWindow = 0; 
 
-        // 실제 네트워크 속도를 바탕으로 한 진짜 트래픽 비율 계산 (0% ~ 25% 내외로 유동적 변화)
         let networkLoad = Math.min(Math.round((currentNetSpeed / MAX_NET_SPEED) * 25), 25);
         
-        // 유튜브 영상이 실제로 실행 중일 때 패킷이 잠깐 끊겨도 유지되는 기본 버퍼 부하 보정 (미세 출렁임 구현)
         if (player && player.getPlayerState() === YT.PlayerState.PLAYING && networkLoad === 0) {
-            networkLoad = Math.floor(Math.random() * 6) + 12; // 12% ~ 17% 사이에서 실시간 유동적 변화
+            networkLoad = Math.floor(Math.random() * 6) + 12; 
         }
 
-        // 최종 종합 부하 = 진짜 네트워크 부하 + 진짜 CPU 연산 부하
         let totalCalculatedTraffic = Math.min(networkLoad + cpuLoadWeight, 100);
         let sendLoad = totalCalculatedTraffic;
 
-        // 🟢 그린 컴퓨팅 최적화 스위치가 켜져 있다면 전력 스케줄링 발동!
+        // 🟢 [수정 포인트] 그린 컴퓨팅 활성화 시 동적 감쇄 알고리즘 (고정값 제거)
         if (greenSwitch.checked && totalCalculatedTraffic > 0) {
-            if (totalCalculatedTraffic > 70) {
-                sendLoad = 35; // 피크 부하 상황을 35% 전력 신호로 압축 제어
-            } else {
-                sendLoad = 10; // 평시 스트리밍 상황을 10% 초절전 모드로 제어
-            }
+            // 들어오는 종합 부하가 피크(70% 이상)일 때는 60% 감쇄, 평시일 때는 45% 감쇄하여 실시간 출렁임 유지
+            let reductionFactor = totalCalculatedTraffic > 70 ? 0.40 : 0.55;
+            sendLoad = Math.max(Math.round(totalCalculatedTraffic * reductionFactor), 5); // 최소 5% 방어선
         }
 
-        // 웹 UI 화면 실시간 업데이트
+        // 스위치 작동 시에만 초록불 들어오도록 시각 링킹 수정
+        if (greenSwitch.checked) {
+            greenDot.style.backgroundColor = 'var(--primary-color)';
+        } else {
+            greenDot.style.backgroundColor = '#ccc';
+        }
+
         trafficDisplay.innerText = totalCalculatedTraffic + "%";
         loadDisplay.innerText = sendLoad + "%";
 
-        // 색상 제어
         trafficDisplay.style.color = totalCalculatedTraffic > 70 ? 'var(--danger-color)' : '#2c3e50';
         loadDisplay.style.color = greenSwitch.checked ? 'var(--primary-color)' : (sendLoad > 70 ? 'var(--danger-color)' : '#3498db');
 
-        // 아두이노 하드웨어 보드로 최종 연산 부하(신호) 실시간 전송
         if (rxCharacteristic) {
             sendBluetoothData(sendLoad);
         }
     }, 500);
 
-    // 블루투스 데이터 송신 함수
     async function sendBluetoothData(value) {
         try {
             const encoder = new TextEncoder();
@@ -236,7 +229,6 @@
         }
     }
 
-    // 블루투스 연결 구조
     connectBtn.addEventListener('click', async () => {
         if (bluetoothDevice && bluetoothDevice.gatt.connected) return;
         try {
