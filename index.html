@@ -99,25 +99,25 @@
         if (rx) rx.writeValueWithoutResponse(new TextEncoder().encode(Math.round(finalLoad) + "\n"));
     }, 500);
 
+    // 웹 코드 connectBtn 수정
     document.getElementById('connectBtn').addEventListener('click', async () => {
         try {
-            const device = await navigator.bluetooth.requestDevice({ filters: [{ namePrefix: 'HC' }], optionalServices: ["0000ffe0-0000-1000-8000-00805f9b34fb"] });
+            console.log("기기 탐색 중...");
+            // 필터 없이 모든 블루투스 기기 검색
+            const device = await navigator.bluetooth.requestDevice({ 
+                acceptAllDevices: true, 
+                optionalServices: ["0000ffe0-0000-1000-8000-00805f9b34fb"] 
+            });
+            console.log("기기 선택됨: ", device.name);
             const server = await device.gatt.connect();
+            console.log("GATT 연결 성공");
             const service = await server.getPrimaryService("0000ffe0-0000-1000-8000-00805f9b34fb");
             rx = await service.getCharacteristics().then(c => c[0]);
-            
-            // 데이터 수신 리스너 (아두이노에서 보낸 전력 데이터 처리)
-            await rx.startNotifications();
-            rx.addEventListener('characteristicvaluechanged', (event) => {
-                let data = new TextDecoder().decode(event.target.value).split(',');
-                if (data.length >= 3) {
-                    document.getElementById('voltDisplay').innerText = data[0] + " V";
-                    document.getElementById('ampDisplay').innerText = data[1] + " A";
-                    document.getElementById('wattDisplay').innerText = data[2] + " W";
-                }
-            });
-            document.getElementById('connectBtn').innerText = "✔ 연동 완료";
-        } catch (e) { document.getElementById('statusText').innerText = "오류: 연결 실패"; }
+            // ... 이하 동일
+        } catch (e) { 
+            console.error("연결 오류 발생:", e);
+            document.getElementById('statusText').innerText = "오류: " + e.message; 
+        }
     });
 </script>
 </body>
